@@ -6,8 +6,8 @@ from telegram.ext import Updater, MessageHandler, Filters
 import openai
 
 # Configuração das chaves de API
-TELEGRAM_TOKEN = '6447974812:AAF4T1lWE2a5abEcbVzUVsIkW82Dwid4lkc'
-OPENAI_API_KEY = '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'
+TELEGRAM_TOKEN = ''
+OPENAI_API_KEY = ''
 
 # Configuração do OpenAI
 openai.api_key = OPENAI_API_KEY
