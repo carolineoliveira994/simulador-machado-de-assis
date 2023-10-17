@@ -1,49 +1,103 @@
-import os
-import random
-import telegram
-from telegram.ext import Updater, MessageHandler, Filters
+import torch
+from transformers import AutoTokenizer
+from torch.utils.data import DataLoader, TensorDataset, random_split
+from transformers import AutoModelForPreTraining, AdamW
+from torch.optim import AdamW
 
-import openai
+import glob
 
-# Configuração das chaves de API
-TELEGRAM_TOKEN = ''
-OPENAI_API_KEY = ''
+# Diretório onde estão os arquivos de texto
+diretorio = 'D:/Users/ter95063/Documents/Ferramentas/notebooks/classification/textos_do_machado/'
 
-# Configuração do OpenAI
-openai.api_key = OPENAI_API_KEY
+# Padrão dos arquivos que você deseja carregar (por exemplo, todos os arquivos .txt)
+padrao_arquivos = '*.txt'
 
-# Carregar textos do Machado de Assis
-textos_machado_dir = 'D:/Users/ter95063/Documents/Ferramentas/notebooks/classification/textos_do_machado/'
-textos_machado = []
+# Lista de caminhos dos arquivos correspondentes ao padrão
+caminhos_arquivos = glob.glob(f"{diretorio}/{padrao_arquivos}")
 
-for filename in os.listdir(textos_machado_dir):
-    if filename.endswith('.txt'):
-        with open(os.path.join(textos_machado_dir, filename), 'r', encoding='utf-8') as file:
-            textos_machado.append(file.read())
+# Carregar os textos dos arquivos em uma lista
+textos = []
+for caminho_arquivo in caminhos_arquivos:
+    with open(caminho_arquivo, 'r', encoding='utf-8') as arquivo:
+        texto = arquivo.read()
+        textos.append(texto)
 
-# Função para gerar resposta do chatbot
-def generate_response(prompt):
-    response = openai.Completion.create(
-        engine="davinci",  # Pode ajustar o mecanismo conforme necessário
-        prompt=prompt,
-        max_tokens=100  # Ajuste conforme necessário
-    )
-    return response.choices[0].text.strip()
+# Agora, você tem todos os textos dos arquivos carregados na lista 'textos'
 
-# Função para lidar com as mensagens do Telegram
-def handle_message(update, context):
-    user_message = update.message.text
-    machado_prompt = f"Eu sou o Machado de Assis, e vou responder sua pergunta:\n\n{user_message}\n\nResposta:"
+# Carregar o tokenizer do BERT para o modelo 'neuralmind/bert-base-portuguese-cased'
+tokenizer = AutoTokenizer.from_pretrained('neuralmind/bert-base-portuguese-cased', do_lower_case=False)
 
-    bot_response = generate_response(machado_prompt)
-    update.message.reply_text(bot_response)
+# Tokenizar os textos e criar input_ids e attention_mask
+preprocessed_texts = []
+max_length = 128  # Valor de max_length desejado, ajuste conforme necessário
 
-def main():
-    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-    updater.start_polling()
-    updater.idle()
+for text in textos:  # Corrigido para usar a variável 'textos'
+    tokens = tokenizer.encode_plus(text, add_special_tokens=True, padding='max_length', truncation=True,
+                                   max_length=max_length, return_tensors='pt')
+    
+    input_ids = tokens['input_ids']
+    attention_mask = tokens['attention_mask']
+    
+    preprocessed_texts.append({
+        'input_ids': input_ids,
+        'attention_mask': attention_mask
+    })
 
-if __name__ == '__main__':
-    main()
+# Verificar os tamanhos dos input_ids e attention_mask
+for idx, text in enumerate(preprocessed_texts):
+    input_ids_shape = text['input_ids'].shape
+    attention_mask_shape = text['attention_mask'].shape
+    print(f"Texto {idx + 1}:")
+    print("Input IDs Shape:", input_ids_shape)
+    print("Attention Mask Shape:", attention_mask_shape)
+    print()
+
+
+
+input_ids = torch.cat([text['input_ids'] for text in preprocessed_texts], dim=0)
+attention_mask = torch.cat([text['attention_mask'] for text in preprocessed_texts], dim=0)
+
+dataset = TensorDataset(input_ids, attention_mask)
+train_size = int(0.8 * len(dataset))
+val_size = len(dataset) - train_size
+train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+batch_size = 16
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size)
+
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = AutoModelForPreTraining.from_pretrained('neuralmind/bert-base-portuguese-cased')
+model.to(device)
+
+epochs = 3
+learning_rate = 2e-5
+optimizer = AdamW(model.parameters(), lr=learning_rate)
+
+for epoch in range(epochs):
+    model.train()
+    total_loss = 0
+
+    for batch in train_loader:
+        input_ids, attention_mask = batch
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+
+        optimizer.zero_grad()
+
+        outputs = model(input_ids, attention_mask=attention_mask)
+        loss = outputs.loss
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+
+    avg_loss = total_loss / len(train_loader)
+
+    # Aqui você pode adicionar códigos para verificar o desempenho no conjunto de validação
+
+    print(f'Epoch {epoch + 1}/{epochs} - Avg. Loss: {avg_loss}')
+
+print('Treinamento concluído!')
+
