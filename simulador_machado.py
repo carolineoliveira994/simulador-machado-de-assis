@@ -9,10 +9,8 @@ import glob
 # Diretório onde estão os arquivos de texto
 diretorio = 'D:/Users/ter95063/Documents/Ferramentas/notebooks/classification/textos_do_machado/'
 
-# Padrão dos arquivos que você deseja carregar (por exemplo, todos os arquivos .txt)
 padrao_arquivos = '*.txt'
 
-# Lista de caminhos dos arquivos correspondentes ao padrão
 caminhos_arquivos = glob.glob(f"{diretorio}/{padrao_arquivos}")
 
 # Carregar os textos dos arquivos em uma lista
@@ -21,8 +19,6 @@ for caminho_arquivo in caminhos_arquivos:
     with open(caminho_arquivo, 'r', encoding='utf-8') as arquivo:
         texto = arquivo.read()
         textos.append(texto)
-
-# Agora, você tem todos os textos dos arquivos carregados na lista 'textos'
 
 # Carregar o tokenizer do BERT para o modelo 'neuralmind/bert-base-portuguese-cased'
 tokenizer = AutoTokenizer.from_pretrained('neuralmind/bert-base-portuguese-cased', do_lower_case=False)
